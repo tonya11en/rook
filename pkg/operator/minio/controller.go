@@ -25,7 +25,6 @@ import (
 	miniov1alpha1 "github.com/rook/rook/pkg/apis/minio.rook.io/v1alpha1"
 	"github.com/rook/rook/pkg/clusterd"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -46,26 +45,22 @@ var ObjectStoreResource = opkit.CustomResource{
 	Kind:    reflect.TypeOf(miniov1alpha1.ObjectStore{}).Name(),
 }
 
-// ObjectStoreController represents a controller object for object store custom resources
-type ObjectStoreController struct {
-	context     *clusterd.Context
-	rookImage   string
-	hostNetwork bool
-	ownerRef    metav1.OwnerReference
+// MinioController represents a controller object for object store custom resources
+type MinioController struct {
+	context   *clusterd.Context
+	rookImage string
 }
 
-// NewObjectStoreController create controller for watching object store custom resources created
-func NewObjectStoreController(context *clusterd.Context, rookImage string, hostNetwork bool, ownerRef metav1.OwnerReference) *ObjectStoreController {
-	return &ObjectStoreController{
-		context:     context,
-		rookImage:   rookImage,
-		hostNetwork: hostNetwork,
-		ownerRef:    ownerRef,
+// NewMinioController create controller for watching object store custom resources created
+func NewMinioController(context *clusterd.Context, rookImage string) *MinioController {
+	return &MinioController{
+		context:   context,
+		rookImage: rookImage,
 	}
 }
 
 // StartWatch watches for instances of ObjectStore custom resources and acts on them
-func (c *ObjectStoreController) StartWatch(namespace string, stopCh chan struct{}) error {
+func (c *MinioController) StartWatch(namespace string, stopCh chan struct{}) error {
 	resourceHandlerFuncs := cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.onAdd,
 		UpdateFunc: c.onUpdate,
@@ -79,7 +74,7 @@ func (c *ObjectStoreController) StartWatch(namespace string, stopCh chan struct{
 	return nil
 }
 
-func (c *ObjectStoreController) onAdd(obj interface{}) {
+func (c *MinioController) onAdd(obj interface{}) {
 	objectstore, err := c.getObjectStoreObject(obj)
 	if err != nil {
 		logger.Errorf("failed to get objectstore object: %+v", err)
@@ -87,9 +82,10 @@ func (c *ObjectStoreController) onAdd(obj interface{}) {
 	}
 
 	// TODO: Do stuff.
+	_ = objectstore
 }
 
-func (c *ObjectStoreController) onUpdate(oldObj, newObj interface{}) {
+func (c *MinioController) onUpdate(oldObj, newObj interface{}) {
 	oldStore, err := c.getObjectStoreObject(oldObj)
 	if err != nil {
 		logger.Errorf("failed to get old objectstore object: %+v", err)
@@ -103,19 +99,21 @@ func (c *ObjectStoreController) onUpdate(oldObj, newObj interface{}) {
 	}
 
 	// TODO: Do stuff.
+	_ = oldStore
+	_ = newStore
 }
 
-func (c *ObjectStoreController) onDelete(obj interface{}) {
+func (c *MinioController) onDelete(obj interface{}) {
 	objectstore, err := c.getObjectStoreObject(obj)
 	if err != nil {
 		logger.Errorf("failed to get objectstore object: %+v", err)
 		return
 	}
 
-	// This should fail.
-	onDelete(obj, what) // TODO: Do stuff
+	// TODO: Do stuff.
+	_ = objectstore
 }
 
-func (c *ObjectStoreController) getObjectStoreObject(obj interface{}) (objectstore *miniov1alpha1.ObjectStore, err error) {
+func (c *MinioController) getObjectStoreObject(obj interface{}) (objectstore *miniov1alpha1.ObjectStore, err error) {
 	return objectstore.DeepCopy(), nil
 }

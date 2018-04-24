@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Rook Authors. All rights reserved.
+Copyright 2018 The Rook Authors. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,11 +18,9 @@ package minio
 import (
 	"fmt"
 
-	"github.com/coreos/pkg/capnslog"
 	"github.com/rook/rook/cmd/rook/rook"
-	"github.com/rook/rook/pkg/clusterd"
-	"github.com/rook/rook/pkg/daemon/agent/flexvolume/attachment"
 	"github.com/rook/rook/pkg/operator/k8sutil"
+	"github.com/rook/rook/pkg/operator/minio"
 	"github.com/rook/rook/pkg/util/flags"
 	"github.com/spf13/cobra"
 )
@@ -57,7 +55,6 @@ func startOperator(cmd *cobra.Command, args []string) error {
 	context.Clientset = clientset
 	context.APIExtensionClientset = apiExtClientset
 	context.RookClientset = rookClientset
-	volumeAttachment, err := attachment.New(context)
 	if err != nil {
 		rook.TerminateFatal(err)
 	}
@@ -68,7 +65,7 @@ func startOperator(cmd *cobra.Command, args []string) error {
 		rook.TerminateFatal(fmt.Errorf("failed to get container image. %+v\n", err))
 	}
 
-	op := operator.New(context, volumeAttachment, rookImage)
+	op := minio.New(context, rookImage)
 	err = op.Run()
 	if err != nil {
 		rook.TerminateFatal(fmt.Errorf("failed to run operator. %+v\n", err))
