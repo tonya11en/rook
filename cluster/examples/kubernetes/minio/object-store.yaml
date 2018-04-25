@@ -2,7 +2,7 @@ apiVersion: minio.rook.io/v1alpha1
 kind: ObjectStore
 metadata:
   name: my-store
-  namespace: rook-minio
+  namespace: rook-minio-system
 spec:
   # The number of Minio servers to spin up in distributed mode.
   # TODO: Include info in comments about max/min values.

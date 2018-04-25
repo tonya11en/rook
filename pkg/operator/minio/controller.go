@@ -83,6 +83,7 @@ func (c *MinioController) onAdd(obj interface{}) {
 
 	// TODO: Do stuff.
 	_ = objectstore
+	logger.Infof("Called onAdd.")
 }
 
 func (c *MinioController) onUpdate(oldObj, newObj interface{}) {
@@ -101,6 +102,7 @@ func (c *MinioController) onUpdate(oldObj, newObj interface{}) {
 	// TODO: Do stuff.
 	_ = oldStore
 	_ = newStore
+	logger.Infof("Called onUpdate.")
 }
 
 func (c *MinioController) onDelete(obj interface{}) {
@@ -112,6 +114,7 @@ func (c *MinioController) onDelete(obj interface{}) {
 
 	// TODO: Do stuff.
 	_ = objectstore
+	logger.Infof("Called onDelete.")
 }
 
 func (c *MinioController) getObjectStoreObject(obj interface{}) (objectstore *miniov1alpha1.ObjectStore, err error) {
