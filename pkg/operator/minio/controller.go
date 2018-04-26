@@ -18,6 +18,7 @@ limitations under the License.
 package minio
 
 import (
+	"fmt"
 	"reflect"
 	"strconv"
 
@@ -134,7 +135,16 @@ func (c *MinioController) makeMinioPVC(name string) (*v1.PersistentVolumeClaim, 
 	return pvc, err
 }
 
-func (c *MinioController) makeMinioPodSpec(name string, ctrName string, ctrImage string, port int32, envVars map[string]string) v1.PodTemplateSpec {
+func (c *MinioController) buildMinioCtrArgs(serverCount int32) []string {
+	args := []string{"server"}
+	for i := int32(0); i < serverCount; i++ {
+		serverAddress := fmt.Sprintf("http://%s%d%s%s", minioServerPrefix, i, minioServerSuffix, minioMountPath)
+		args = append(args, serverAddress)
+	}
+	return args
+}
+
+func (c *MinioController) makeMinioPodSpec(name string, ctrName string, ctrImage string, port int32, envVars map[string]string, numServers int32) v1.PodTemplateSpec {
 	var env []v1.EnvVar
 	for k, v := range envVars {
 		env = append(env, v1.EnvVar{Name: k, Value: v})
@@ -156,6 +166,7 @@ func (c *MinioController) makeMinioPodSpec(name string, ctrName string, ctrImage
 							ContainerPort: port,
 						},
 					},
+					Args: c.buildMinioCtrArgs(numServers),
 					VolumeMounts: []v1.VolumeMount{
 						{
 							Name:      minioVolumeName,
@@ -166,8 +177,8 @@ func (c *MinioController) makeMinioPodSpec(name string, ctrName string, ctrImage
 			},
 			Volumes: []v1.Volume{
 				{
-					minioVolumeName,
-					v1.VolumeSource{
+					Name: minioVolumeName,
+					VolumeSource: v1.VolumeSource{
 						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
 							ClaimName: minioPVCName,
 						},
@@ -187,7 +198,7 @@ func (c *MinioController) makeMinioStatefulSet(name string, spec miniov1alpha1.O
 		"MINIO_ACCESS_KEY": spec.Credentials.AccessKey,
 		"MINIO_SECRET_KEY": spec.Credentials.SecretKey}
 
-	podSpec := c.makeMinioPodSpec(name, minioCtrName, minioCtrImage, spec.Networking.Port, envVars)
+	podSpec := c.makeMinioPodSpec(name, minioCtrName, minioCtrImage, spec.Networking.Port, envVars, spec.NumServers)
 
 	pvc, err := c.makeMinioPVC(minioPVCName)
 	if err != nil {
