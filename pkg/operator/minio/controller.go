@@ -40,12 +40,10 @@ const (
 	customResourceName       = "objectstore"
 	customResourceNamePlural = "objectstores"
 	minioNamespace           = "rook-minio-system"
-	minioServiceName         = "minio-service"
 	minioPVCName             = "minio-pvc"
 	minioPVCAccessMode       = "ReadWriteOnce"
 	minioLabel               = "minio"
-	minioServerPrefix        = "minio-"
-	minioServerSuffix        = "minio.default.svc.cluster.local"
+	minioServerSuffix        = minioNamespace + ".svc.cluster.local"
 	minioVolumeName          = "data"
 	minioMountPath           = "/data"
 	minioStorageGBString     = "10G"
@@ -116,10 +114,10 @@ func (c *MinioController) makeMinioHeadlessService(name string, spec miniov1alph
 	return svc, err
 }
 
-func (c *MinioController) buildMinioCtrArgs(serverCount int32) []string {
+func (c *MinioController) buildMinioCtrArgs(statefulSetPrefix string, headlessServiceName string, serverCount int32) []string {
 	args := []string{"server"}
 	for i := int32(0); i < serverCount; i++ {
-		serverAddress := fmt.Sprintf("http://%s%d%s%s", minioServerPrefix, i, minioServerSuffix, minioMountPath)
+		serverAddress := fmt.Sprintf("http://%s-%d.%s.%s%s", statefulSetPrefix, i, headlessServiceName, minioServerSuffix, minioMountPath)
 		args = append(args, serverAddress)
 	}
 	return args
@@ -147,7 +145,8 @@ func (c *MinioController) makeMinioPodSpec(name string, ctrName string, ctrImage
 							ContainerPort: port,
 						},
 					},
-					Args: c.buildMinioCtrArgs(numServers),
+					// TODO: Let's go about building these args in a more elegant way.
+					Args: c.buildMinioCtrArgs(name, name, numServers),
 					VolumeMounts: []v1.VolumeMount{
 						{
 							Name:      minioVolumeName,
@@ -234,7 +233,7 @@ func (c *MinioController) makeMinioService(name string, spec miniov1alpha1.Objec
 			Labels: map[string]string{"app": minioLabel},
 		},
 		Spec: v1.ServiceSpec{
-			Type:     v1.ServiceTypeLoadBalancer,
+			Type:     v1.ServiceTypeNodePort,
 			Selector: map[string]string{"app": minioLabel},
 			Ports: []v1.ServicePort{
 				{
@@ -272,7 +271,7 @@ func (c *MinioController) onAdd(obj interface{}) {
 	}
 	logger.Infof("Finished creating Minio stateful set %s.", objectstore.Name)
 
-	// Create the load balancer service.
+	// Create the nodeport service.
 	svcName := objectstore.Name + "-service"
 	logger.Infof("Creating Minio service %s.", svcName)
 	_, err = c.makeMinioService(svcName, objectstore.Spec)
@@ -299,7 +298,7 @@ func (c *MinioController) onDelete(obj interface{}) {
 	//listOpts := meta_v1.ListOptions{LabelSelector: "app=" + minioLabel}
 	coreV1Client := c.context.Clientset.CoreV1()
 
-	// Delete load balancer service.
+	// Delete nodeport service.
 	svcName := objectstore.Name + "-service"
 	logger.Infof("Deleting Minio service %s.", svcName)
 	// TODO: Perhaps we shouldn't use DeleteCollection, but this works for a demo.
