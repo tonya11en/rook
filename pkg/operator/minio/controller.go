@@ -20,7 +20,6 @@ package minio
 import (
 	"fmt"
 	"reflect"
-	"strconv"
 
 	"github.com/coreos/pkg/capnslog"
 	opkit "github.com/rook/operator-kit"
@@ -49,7 +48,7 @@ const (
 	minioServerSuffix        = "minio.default.svc.cluster.local"
 	minioVolumeName          = "data"
 	minioMountPath           = "/data"
-	minioStorageGB           = 10
+	minioStorageGBString     = "10G"
 	minioCtrName             = "minio"
 	minioCtrImage            = "minio/minio:RELEASE.2018-04-19T22-54-58Z"
 )
@@ -117,28 +116,6 @@ func (c *MinioController) makeMinioHeadlessService(name string, spec miniov1alph
 	return svc, err
 }
 
-func (c *MinioController) makeMinioPVC(name string) (*v1.PersistentVolumeClaim, error) {
-	coreV1Client := c.context.Clientset.CoreV1()
-	logger.Infof("Creating PVC %s.", name)
-	// TODO: dont' do this
-	// https://github.com/jbw976/rook/blob/cockroachdb/pkg/operator/cockroachdb/cluster/controller.go#L415
-	pvc, err := coreV1Client.PersistentVolumeClaims(minioNamespace).Create(&v1.PersistentVolumeClaim{
-		ObjectMeta: meta_v1.ObjectMeta{
-			Name: name,
-		},
-		Spec: v1.PersistentVolumeClaimSpec{
-			AccessModes: []v1.PersistentVolumeAccessMode{minioPVCAccessMode},
-			Resources: v1.ResourceRequirements{
-				Requests: v1.ResourceList{
-					"storage": resource.MustParse(strconv.Itoa(minioStorageGB) + "G"),
-				},
-			},
-		},
-	})
-
-	return pvc, err
-}
-
 func (c *MinioController) buildMinioCtrArgs(serverCount int32) []string {
 	args := []string{"server"}
 	for i := int32(0); i < serverCount; i++ {
@@ -204,13 +181,6 @@ func (c *MinioController) makeMinioStatefulSet(name string, spec miniov1alpha1.O
 
 	podSpec := c.makeMinioPodSpec(name, minioCtrName, minioCtrImage, spec.Networking.Port, envVars, spec.NumServers)
 
-	pvc, err := c.makeMinioPVC(minioPVCName)
-	if err != nil {
-		logger.Errorf("failed to create PVC: %v", err)
-		// TODO: might not want to do this
-		return nil, err
-	}
-
 	ss := v1beta2.StatefulSet{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:   name,
@@ -221,9 +191,24 @@ func (c *MinioController) makeMinioStatefulSet(name string, spec miniov1alpha1.O
 			Selector: &meta_v1.LabelSelector{
 				MatchLabels: map[string]string{"app": minioLabel},
 			},
-			Template:             podSpec,
-			VolumeClaimTemplates: []v1.PersistentVolumeClaim{*pvc},
-			ServiceName:          name,
+			Template: podSpec,
+			VolumeClaimTemplates: []v1.PersistentVolumeClaim{
+				{
+					ObjectMeta: meta_v1.ObjectMeta{
+						Name:      minioVolumeName,
+						Namespace: minioNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceStorage: resource.MustParse(minioStorageGBString),
+							},
+						},
+					},
+				},
+			},
+			ServiceName: name,
 			// TODO: liveness probe
 		},
 	}
@@ -340,12 +325,4 @@ func (c *MinioController) onDelete(obj interface{}) {
 		logger.Errorf("failed to delete service: %v", err)
 	}
 	logger.Infof("Finished deleting Minio headless service %s.", objectstore.Name)
-
-	// Delete PVC.
-	logger.Infof("Deleting PVC %s.", minioPVCName)
-	err = coreV1Client.PersistentVolumeClaims(minioNamespace).Delete(minioPVCName, &delOpts)
-	if err != nil {
-		logger.Errorf("failed to delete PVC: %v", err)
-	}
-	logger.Infof("Finished deleting PVC %s.", minioPVCName)
 }
