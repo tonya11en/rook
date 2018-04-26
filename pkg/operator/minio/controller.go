@@ -40,6 +40,7 @@ import (
 const (
 	customResourceName       = "objectstore"
 	customResourceNamePlural = "objectstores"
+	minioNamespace           = "rook-minio-system"
 	minioServiceName         = "minio-service"
 	minioPVCName             = "minio-pvc"
 	minioPVCAccessMode       = "ReadWriteOnce"
@@ -97,7 +98,7 @@ func (c *MinioController) StartWatch(namespace string, stopCh chan struct{}) err
 func (c *MinioController) makeMinioHeadlessService(name string, spec miniov1alpha1.ObjectStoreSpec) (*v1.Service, error) {
 	coreV1Client := c.context.Clientset.CoreV1()
 
-	svc, err := coreV1Client.Services(v1.NamespaceDefault).Create(&v1.Service{
+	svc, err := coreV1Client.Services(minioNamespace).Create(&v1.Service{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:   name,
 			Labels: map[string]string{"app": minioLabel},
@@ -118,7 +119,7 @@ func (c *MinioController) makeMinioHeadlessService(name string, spec miniov1alph
 
 func (c *MinioController) makeMinioPVC(name string) (*v1.PersistentVolumeClaim, error) {
 	coreV1Client := c.context.Clientset.CoreV1()
-	pvc, err := coreV1Client.PersistentVolumeClaims(v1.NamespaceDefault).Create(&v1.PersistentVolumeClaim{
+	pvc, err := coreV1Client.PersistentVolumeClaims(minioNamespace).Create(&v1.PersistentVolumeClaim{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name: name,
 		},
@@ -224,7 +225,7 @@ func (c *MinioController) makeMinioStatefulSet(name string, spec miniov1alpha1.O
 		},
 	}
 
-	return appsClient.StatefulSets(v1.NamespaceDefault).Create(&ss)
+	return appsClient.StatefulSets(minioNamespace).Create(&ss)
 }
 
 func (c *MinioController) makeMinioService(name string, spec miniov1alpha1.ObjectStoreSpec) (*v1.Service, error) {
@@ -239,7 +240,7 @@ func (c *MinioController) makeMinioService(name string, spec miniov1alpha1.Objec
 		protocol = v1.ProtocolTCP
 	}
 
-	svc, err := coreV1Client.Services(v1.NamespaceDefault).Create(&v1.Service{
+	svc, err := coreV1Client.Services(minioNamespace).Create(&v1.Service{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:   name,
 			Labels: map[string]string{"app": minioLabel},
@@ -266,31 +267,32 @@ func (c *MinioController) onAdd(obj interface{}) {
 	// TODO: Error handling. Do we need to delete all the previously successful creations?
 
 	// Create the headless service.
-	logger.Infof("Creating Minio headless service...")
+	logger.Infof("Creating Minio headless service %s.", objectstore.Name)
 	_, err := c.makeMinioHeadlessService(objectstore.Name, objectstore.Spec)
 	if err != nil {
 		logger.Errorf("failed to create minio service: %v", err)
 		return
 	}
-	logger.Infof("Finished creating Minio headless service.")
+	logger.Infof("Finished creating Minio headless service %s.", objectstore.Name)
 
 	// Create the stateful set.
-	logger.Infof("Creating Minio stateful set...")
+	logger.Infof("Creating Minio stateful set %s.", objectstore.Name)
 	_, err = c.makeMinioStatefulSet(objectstore.Name, objectstore.Spec)
 	if err != nil {
 		logger.Errorf("failed to create minio stateful set: %v", err)
 		return
 	}
-	logger.Infof("Finished creating Minio stateful set.")
+	logger.Infof("Finished creating Minio stateful set %s.", objectstore.Name)
 
 	// Create the load balancer service.
-	logger.Infof("Creating Minio service...")
-	_, err = c.makeMinioService(objectstore.Name+"-service", objectstore.Spec)
+	svcName := objectstore.Name + "-service"
+	logger.Infof("Creating Minio service %s.", svcName)
+	_, err = c.makeMinioService(svcName, objectstore.Spec)
 	if err != nil {
 		logger.Errorf("failed to create minio service: %v", err)
 		return
 	}
-	logger.Infof("Finished creating Minio service.")
+	logger.Infof("Finished creating Minio service %s.", svcName)
 }
 
 func (c *MinioController) onUpdate(oldObj, newObj interface{}) {
@@ -305,8 +307,34 @@ func (c *MinioController) onUpdate(oldObj, newObj interface{}) {
 
 func (c *MinioController) onDelete(obj interface{}) {
 	objectstore := obj.(*miniov1alpha1.ObjectStore).DeepCopy()
+	var delOpts meta_v1.DeleteOptions
+	//listOpts := meta_v1.ListOptions{LabelSelector: "app=" + minioLabel}
+	coreV1Client := c.context.Clientset.CoreV1()
 
-	// TODO: Do stuff.
-	_ = objectstore
-	logger.Infof("Called onDelete.")
+	// Delete load balancer service.
+	svcName := objectstore.Name + "-service"
+	logger.Infof("Deleting Minio service %s.", svcName)
+	// TODO: Perhaps we shouldn't use DeleteCollection, but this works for a demo.
+	err := coreV1Client.Services(minioNamespace).Delete(svcName, &delOpts)
+	if err != nil {
+		logger.Errorf("failed to delete service: %v", err)
+	}
+	logger.Infof("Finished deleting Minio service %s.", svcName)
+
+	// Delete stateful set.
+	logger.Infof("Deleting Minio stateful set %s.", objectstore.Name)
+	appsClient := c.context.Clientset.AppsV1beta2()
+	err = appsClient.StatefulSets(minioNamespace).Delete(objectstore.Name, &delOpts)
+	if err != nil {
+		logger.Errorf("failed to delete stateful se t: %v", err)
+	}
+	logger.Infof("Finished deleting Minio stateful set %s.", objectstore.Name)
+
+	// Delete headless service.
+	logger.Infof("Deleting Minio headless service %s.", objectstore.Name)
+	err = coreV1Client.Services(minioNamespace).Delete(objectstore.Name, &delOpts)
+	if err != nil {
+		logger.Errorf("failed to delete service: %v", err)
+	}
+	logger.Infof("Finished deleting Minio headless service %s.", objectstore.Name)
 }
