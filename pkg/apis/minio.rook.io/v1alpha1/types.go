@@ -46,7 +46,7 @@ type ObjectStoreList struct {
 // ObjectStoreSpec represent the spec of a pool
 type ObjectStoreSpec struct {
 	// The number of Minio servers we spin up.
-	NumServers int `json:"numServers"`
+	NumServers int32 `json:"numServers"`
 
 	// Minio cluster credential configuration.
 	Credentials CredentialConfig `json:"credentials"`
@@ -69,6 +69,7 @@ type NetworkConfig struct {
 	// TODO: figure out difference between port/targetPort.
 	Port int32 `json:"port"`
 
+	// Currently not used.
 	TargetPort int32 `json:"targetPort"`
 
 	// TODO: perhaps a raw string isn't the best thing to use here.

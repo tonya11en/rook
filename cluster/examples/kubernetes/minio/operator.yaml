@@ -45,6 +45,17 @@ rules:
   - update
   - delete
 - apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - delete
+- apiGroups:
   - extensions
   resources:
   - deployments
