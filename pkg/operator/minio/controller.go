@@ -119,6 +119,9 @@ func (c *MinioController) makeMinioHeadlessService(name string, spec miniov1alph
 
 func (c *MinioController) makeMinioPVC(name string) (*v1.PersistentVolumeClaim, error) {
 	coreV1Client := c.context.Clientset.CoreV1()
+	logger.Infof("Creating PVC %s.", name)
+	// TODO: dont' do this
+	// https://github.com/jbw976/rook/blob/cockroachdb/pkg/operator/cockroachdb/cluster/controller.go#L415
 	pvc, err := coreV1Client.PersistentVolumeClaims(minioNamespace).Create(&v1.PersistentVolumeClaim{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name: name,
@@ -337,4 +340,12 @@ func (c *MinioController) onDelete(obj interface{}) {
 		logger.Errorf("failed to delete service: %v", err)
 	}
 	logger.Infof("Finished deleting Minio headless service %s.", objectstore.Name)
+
+	// Delete PVC.
+	logger.Infof("Deleting PVC %s.", minioPVCName)
+	err = coreV1Client.PersistentVolumeClaims(minioNamespace).Delete(minioPVCName, &delOpts)
+	if err != nil {
+		logger.Errorf("failed to delete PVC: %v", err)
+	}
+	logger.Infof("Finished deleting PVC %s.", minioPVCName)
 }
