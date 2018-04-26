@@ -295,6 +295,8 @@ func (c *MinioController) onUpdate(oldObj, newObj interface{}) {
 func (c *MinioController) onDelete(obj interface{}) {
 	objectstore := obj.(*miniov1alpha1.ObjectStore).DeepCopy()
 	var delOpts meta_v1.DeleteOptions
+	propPolicy := meta_v1.DeletePropagationForeground
+	delOpts.PropagationPolicy = &propPolicy
 	//listOpts := meta_v1.ListOptions{LabelSelector: "app=" + minioLabel}
 	coreV1Client := c.context.Clientset.CoreV1()
 
