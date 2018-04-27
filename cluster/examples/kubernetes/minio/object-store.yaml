@@ -1,8 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rook-minio
+---
 apiVersion: minio.rook.io/v1alpha1
 kind: ObjectStore
 metadata:
   name: my-store
-  namespace: rook-minio-system
+  namespace: rook-minio
 spec:
   # The number of Minio servers to spin up in distributed mode.
   # TODO: Include info in comments about max/min values.
@@ -10,9 +15,9 @@ spec:
   # TODO: Use a k8s secret here. Example
   credentials:
     # Username to access Minio via SDK, CLI, and browser interface.
-    accessKey: "change_this_access_key"
+    accessKey: "TEMP_DEMO_ACCESS_KEY"
     # Password to access Minio via SDK, CLI, and browser interface.
-    secretKey: "change_this_secret_key"
+    secretKey: "TEMP_DEMO_SECRET_KEY"
   network:
     port: 9000
     targetPort: 9000

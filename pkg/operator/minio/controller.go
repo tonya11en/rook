@@ -39,11 +39,10 @@ import (
 const (
 	customResourceName       = "objectstore"
 	customResourceNamePlural = "objectstores"
-	minioNamespace           = "rook-minio-system"
 	minioPVCName             = "minio-pvc"
 	minioPVCAccessMode       = "ReadWriteOnce"
 	minioLabel               = "minio"
-	minioServerSuffix        = minioNamespace + ".svc.cluster.local"
+	minioServerSuffixFmt     = "%s.svc.cluster.local"
 	minioVolumeName          = "data"
 	minioMountPath           = "/data"
 	minioStorageGBString     = "10G"
@@ -92,13 +91,14 @@ func (c *MinioController) StartWatch(namespace string, stopCh chan struct{}) err
 	return nil
 }
 
-func (c *MinioController) makeMinioHeadlessService(name string, spec miniov1alpha1.ObjectStoreSpec) (*v1.Service, error) {
+func (c *MinioController) makeMinioHeadlessService(name, namespace string, spec miniov1alpha1.ObjectStoreSpec) (*v1.Service, error) {
 	coreV1Client := c.context.Clientset.CoreV1()
 
-	svc, err := coreV1Client.Services(minioNamespace).Create(&v1.Service{
+	svc, err := coreV1Client.Services(namespace).Create(&v1.Service{
 		ObjectMeta: meta_v1.ObjectMeta{
-			Name:   name,
-			Labels: map[string]string{"app": minioLabel},
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{"app": minioLabel},
 		},
 		Spec: v1.ServiceSpec{
 			Selector: map[string]string{"app": minioLabel},
@@ -114,16 +114,16 @@ func (c *MinioController) makeMinioHeadlessService(name string, spec miniov1alph
 	return svc, err
 }
 
-func (c *MinioController) buildMinioCtrArgs(statefulSetPrefix string, headlessServiceName string, serverCount int32) []string {
+func (c *MinioController) buildMinioCtrArgs(statefulSetPrefix, headlessServiceName, namespace string, serverCount int32) []string {
 	args := []string{"server"}
 	for i := int32(0); i < serverCount; i++ {
-		serverAddress := fmt.Sprintf("http://%s-%d.%s.%s%s", statefulSetPrefix, i, headlessServiceName, minioServerSuffix, minioMountPath)
+		serverAddress := fmt.Sprintf("http://%s-%d.%s.%s%s", statefulSetPrefix, i, headlessServiceName, fmt.Sprintf(minioServerSuffixFmt, namespace), minioMountPath)
 		args = append(args, serverAddress)
 	}
 	return args
 }
 
-func (c *MinioController) makeMinioPodSpec(name string, ctrName string, ctrImage string, port int32, envVars map[string]string, numServers int32) v1.PodTemplateSpec {
+func (c *MinioController) makeMinioPodSpec(name, namespace string, ctrName string, ctrImage string, port int32, envVars map[string]string, numServers int32) v1.PodTemplateSpec {
 	var env []v1.EnvVar
 	for k, v := range envVars {
 		env = append(env, v1.EnvVar{Name: k, Value: v})
@@ -131,8 +131,9 @@ func (c *MinioController) makeMinioPodSpec(name string, ctrName string, ctrImage
 
 	podSpec := v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
-			Name:   name,
-			Labels: map[string]string{"app": minioLabel},
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{"app": minioLabel},
 		},
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{
@@ -146,7 +147,7 @@ func (c *MinioController) makeMinioPodSpec(name string, ctrName string, ctrImage
 						},
 					},
 					// TODO: Let's go about building these args in a more elegant way.
-					Args: c.buildMinioCtrArgs(name, name, numServers),
+					Args: c.buildMinioCtrArgs(name, name, namespace, numServers),
 					VolumeMounts: []v1.VolumeMount{
 						{
 							Name:      minioVolumeName,
@@ -171,19 +172,20 @@ func (c *MinioController) makeMinioPodSpec(name string, ctrName string, ctrImage
 	return podSpec
 }
 
-func (c *MinioController) makeMinioStatefulSet(name string, spec miniov1alpha1.ObjectStoreSpec) (*v1beta2.StatefulSet, error) {
+func (c *MinioController) makeMinioStatefulSet(name, namespace string, spec miniov1alpha1.ObjectStoreSpec) (*v1beta2.StatefulSet, error) {
 	appsClient := c.context.Clientset.AppsV1beta2()
 
 	envVars := map[string]string{
 		"MINIO_ACCESS_KEY": spec.Credentials.AccessKey,
 		"MINIO_SECRET_KEY": spec.Credentials.SecretKey}
 
-	podSpec := c.makeMinioPodSpec(name, minioCtrName, minioCtrImage, spec.Networking.Port, envVars, spec.NumServers)
+	podSpec := c.makeMinioPodSpec(name, namespace, minioCtrName, minioCtrImage, spec.Networking.Port, envVars, spec.NumServers)
 
 	ss := v1beta2.StatefulSet{
 		ObjectMeta: meta_v1.ObjectMeta{
-			Name:   name,
-			Labels: map[string]string{"app": minioLabel},
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{"app": minioLabel},
 		},
 		Spec: v1beta2.StatefulSetSpec{
 			Replicas: &spec.NumServers,
@@ -195,7 +197,7 @@ func (c *MinioController) makeMinioStatefulSet(name string, spec miniov1alpha1.O
 				{
 					ObjectMeta: meta_v1.ObjectMeta{
 						Name:      minioVolumeName,
-						Namespace: minioNamespace,
+						Namespace: namespace,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -212,10 +214,10 @@ func (c *MinioController) makeMinioStatefulSet(name string, spec miniov1alpha1.O
 		},
 	}
 
-	return appsClient.StatefulSets(minioNamespace).Create(&ss)
+	return appsClient.StatefulSets(namespace).Create(&ss)
 }
 
-func (c *MinioController) makeMinioService(name string, spec miniov1alpha1.ObjectStoreSpec) (*v1.Service, error) {
+func (c *MinioController) makeMinioService(name, namespace string, spec miniov1alpha1.ObjectStoreSpec) (*v1.Service, error) {
 	coreV1Client := c.context.Clientset.CoreV1()
 
 	// Parse the specified protocol. If we don't recognize it, just log an error and go with TCP.
@@ -227,10 +229,11 @@ func (c *MinioController) makeMinioService(name string, spec miniov1alpha1.Objec
 		protocol = v1.ProtocolTCP
 	}
 
-	svc, err := coreV1Client.Services(minioNamespace).Create(&v1.Service{
+	svc, err := coreV1Client.Services(namespace).Create(&v1.Service{
 		ObjectMeta: meta_v1.ObjectMeta{
-			Name:   name,
-			Labels: map[string]string{"app": minioLabel},
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{"app": minioLabel},
 		},
 		Spec: v1.ServiceSpec{
 			Type:     v1.ServiceTypeNodePort,
@@ -255,7 +258,7 @@ func (c *MinioController) onAdd(obj interface{}) {
 
 	// Create the headless service.
 	logger.Infof("Creating Minio headless service %s.", objectstore.Name)
-	_, err := c.makeMinioHeadlessService(objectstore.Name, objectstore.Spec)
+	_, err := c.makeMinioHeadlessService(objectstore.Name, objectstore.Namespace, objectstore.Spec)
 	if err != nil {
 		logger.Errorf("failed to create minio service: %v", err)
 		return
@@ -264,7 +267,7 @@ func (c *MinioController) onAdd(obj interface{}) {
 
 	// Create the stateful set.
 	logger.Infof("Creating Minio stateful set %s.", objectstore.Name)
-	_, err = c.makeMinioStatefulSet(objectstore.Name, objectstore.Spec)
+	_, err = c.makeMinioStatefulSet(objectstore.Name, objectstore.Namespace, objectstore.Spec)
 	if err != nil {
 		logger.Errorf("failed to create minio stateful set: %v", err)
 		return
@@ -274,7 +277,7 @@ func (c *MinioController) onAdd(obj interface{}) {
 	// Create the nodeport service.
 	svcName := objectstore.Name + "-service"
 	logger.Infof("Creating Minio service %s.", svcName)
-	_, err = c.makeMinioService(svcName, objectstore.Spec)
+	_, err = c.makeMinioService(svcName, objectstore.Namespace, objectstore.Spec)
 	if err != nil {
 		logger.Errorf("failed to create minio service: %v", err)
 		return
@@ -304,7 +307,7 @@ func (c *MinioController) onDelete(obj interface{}) {
 	svcName := objectstore.Name + "-service"
 	logger.Infof("Deleting Minio service %s.", svcName)
 	// TODO: Perhaps we shouldn't use DeleteCollection, but this works for a demo.
-	err := coreV1Client.Services(minioNamespace).Delete(svcName, &delOpts)
+	err := coreV1Client.Services(objectstore.Namespace).Delete(svcName, &delOpts)
 	if err != nil {
 		logger.Errorf("failed to delete service: %v", err)
 	}
@@ -313,7 +316,7 @@ func (c *MinioController) onDelete(obj interface{}) {
 	// Delete stateful set.
 	logger.Infof("Deleting Minio stateful set %s.", objectstore.Name)
 	appsClient := c.context.Clientset.AppsV1beta2()
-	err = appsClient.StatefulSets(minioNamespace).Delete(objectstore.Name, &delOpts)
+	err = appsClient.StatefulSets(objectstore.Namespace).Delete(objectstore.Name, &delOpts)
 	if err != nil {
 		logger.Errorf("failed to delete stateful se t: %v", err)
 	}
@@ -321,7 +324,7 @@ func (c *MinioController) onDelete(obj interface{}) {
 
 	// Delete headless service.
 	logger.Infof("Deleting Minio headless service %s.", objectstore.Name)
-	err = coreV1Client.Services(minioNamespace).Delete(objectstore.Name, &delOpts)
+	err = coreV1Client.Services(objectstore.Namespace).Delete(objectstore.Name, &delOpts)
 	if err != nil {
 		logger.Errorf("failed to delete service: %v", err)
 	}
