@@ -29,6 +29,9 @@ You can check if the operator is up and running with:
 Now that the operator is running, we can create an instance of a distributed Minio object store by creating an instance of the `objectstore.minio.rook.io` resource.
 Some of that resource's values are configurable, so feel free to browse `object-store.yaml` and tweak the settings to your liking.
 
+It is **strongly recommended** to update the values of `accessKey` and `secretKey` in `object-store.yaml` to a secure key pair,
+as described in the [Minio client quickstart guide](https://docs.minio.io/docs/minio-client-quickstart-guide).
+
 When you are ready to create a Minio object store, simply run:
 
 ```console
@@ -47,7 +50,7 @@ kubectl -n rook-minio-system get objectstores.minio.rook.io
 To check if all the desired replicas are running, you should see the same number of entries from the following command as the replica count that was specified in `object-store.yaml`:
 
 ```console
-kubectl -n -n rook-minio-system get pod -l app=minio
+kubectl -n rook-minio-system get pod -l app=minio
 ```
 
 ## Accessing the Object Store
@@ -57,25 +60,26 @@ exposed external to the cluster at the Kubernetes cluster IP via a "NodePort". W
 has been assigned to the service via:
 
 ```console
-kubectl -n rook-minio-system describe svc/my-store-service | grep ^NodePort
-```
-
-You should see the NodePort assigned in the output from above. It should resemble the following:
-
-```
-NodePort:                 <unset>  30637/TCP
+kubectl -n rook-minio-system get service my-store-service -o jsonpath='{.spec.ports[0].nodePort}'
 ```
 
 If you are using [Minikube](https://github.com/kubernetes/minikube), you can get your cluster IP via
 `minikube ip`.
+The full address of the Minio service when using Minikube can be obtained with the following:
 
-![Minio Web Demo](media/minio_demo.jpg)
+```console
+echo http://$(minikube ip):$(kubectl -n rook-minio-system get service my-store-service -o jsonpath='{.spec.ports[0].nodePort}')
+```
+
+Copy and paste the full address and port into an internet browser and you will be taken to the Minio web console login page, as shown in the screenshot below:
+
+![Minio Web Demo](media/minio_demo.png)
 
 ## Clean up
 
 To clean up all resources associated with this walk-through, you can run the commands below.
 
-**NOTE** that this will destroy your database and delete all of its associated data.
+**NOTE** that this will destroy your Minio object store and delete all of its associated data.
 
 ```console
 kubectl delete -f object-store.yaml
